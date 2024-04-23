@@ -2,8 +2,7 @@
  * By default, this file exports the methods from streams-utils.edge since all of those are based on Node.js web streams.
  * This file will then be an incremental re-implementation of all of those methods into Node.js only versions (based on proper Node.js Streams).
  */
-
-import { PassThrough, type Readable, Writable } from 'node:stream'
+import { PassThrough, Readable, Writable, pipeline } from 'node:stream'
 import type { Options as RenderToPipeableStreamOptions } from 'react-dom/server.node'
 import { StringDecoder } from 'node:string_decoder'
 
@@ -76,4 +75,15 @@ export async function streamToString(stream: Readable) {
   string += decoder.end()
 
   return string
+}
+
+// @ts-ignore
+export function chainStreams(source, ...streams): Readable {
+  const readable = new Readable()
+
+  pipeline(source, ...streams, readable, () => {
+    /* do nothing */
+  })
+
+  return readable
 }
