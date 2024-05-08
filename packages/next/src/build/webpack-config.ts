@@ -775,18 +775,15 @@ export default async function getBaseWebpackConfig(
 
   const crossOrigin = config.crossOrigin
 
-  // The `serverComponentsExternalPackages` should not conflict with
+  // The `serverExternalPackages` should not conflict with
   // the `transpilePackages`.
-  if (
-    config.experimental.serverComponentsExternalPackages &&
-    finalTranspilePackages
-  ) {
+  if (config.serverExternalPackages && finalTranspilePackages) {
     const externalPackageConflicts = finalTranspilePackages.filter((pkg) =>
-      config.experimental.serverComponentsExternalPackages?.includes(pkg)
+      config.serverExternalPackages?.includes(pkg)
     )
     if (externalPackageConflicts.length > 0) {
       throw new Error(
-        `The packages specified in the 'transpilePackages' conflict with the 'serverComponentsExternalPackages': ${externalPackageConflicts.join(
+        `The packages specified in the 'transpilePackages' conflict with the 'serverExternalPackages': ${externalPackageConflicts.join(
           ', '
         )}`
       )
@@ -795,7 +792,7 @@ export default async function getBaseWebpackConfig(
 
   // For original request, such as `package name`
   const optOutBundlingPackages = EXTERNAL_PACKAGES.concat(
-    ...(config.experimental.serverComponentsExternalPackages || [])
+    ...(config.serverExternalPackages || [])
   ).filter((pkg) => !finalTranspilePackages?.includes(pkg))
   // For resolved request, such as `absolute path/package name/foo/bar.js`
   const optOutBundlingPackageRegex = new RegExp(
@@ -1276,14 +1273,6 @@ export default async function getBaseWebpackConfig(
         ...(hasAppDir
           ? [
               {
-                layer: WEBPACK_LAYERS.appRouteHandler,
-                test: new RegExp(
-                  `private-next-app-dir\\/.*\\/route\\.(${pageExtensions.join(
-                    '|'
-                  )})$`
-                ),
-              },
-              {
                 // Make sure that AsyncLocalStorage module instance is shared between server and client
                 // layers.
                 layer: WEBPACK_LAYERS.shared,
@@ -1702,23 +1691,17 @@ export default async function getBaseWebpackConfig(
               '.shared-runtime'
             )
             const layer = resource.contextInfo.issuerLayer
-
             let runtime
 
-            switch (layer) {
-              case WEBPACK_LAYERS.appRouteHandler:
-                runtime = 'app-route'
-                break
-              case WEBPACK_LAYERS.serverSideRendering:
-              case WEBPACK_LAYERS.reactServerComponents:
-              case WEBPACK_LAYERS.appPagesBrowser:
-              case WEBPACK_LAYERS.actionBrowser:
-                runtime = 'app-page'
-                break
-              default:
-                runtime = 'pages'
+            if (layer === WEBPACK_LAYERS.serverSideRendering) {
+              runtime = 'app-page'
+            } else if (!layer) {
+              runtime = 'pages'
+            } else {
+              throw new Error(
+                `shared-runtime module ${moduleName} cannot be used in ${layer} layer`
+              )
             }
-
             resource.request = `next/dist/server/future/route-modules/${runtime}/vendored/contexts/${moduleName}`
           }
         ),
@@ -1821,7 +1804,11 @@ export default async function getBaseWebpackConfig(
           dev,
           sriEnabled: !dev && !!config.experimental.sri?.algorithm,
           rewrites,
-          edgeEnvironments: edgePreviewProps || {},
+          edgeEnvironments: {
+            __NEXT_BUILD_ID: buildId,
+            NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: encryptionKey,
+            ...edgePreviewProps,
+          },
         }),
       isClient &&
         new BuildManifestPlugin({
